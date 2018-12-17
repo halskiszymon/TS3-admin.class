@@ -3,10 +3,10 @@
  *                         ts3admin.class.php
  *                         ------------------                    
  *   created              : 02. October 2018
- *   last modified        : 05. October 2018
+ *   last modified        : 14. December 2018
  *   basic autor          : Stefan Zehnpfennig
  *   autor                : L. Gmann
- *   version              : 1.1.0.0
+ *   version              : 1.1.0.1
  *   website              : http://first-coder.de/
  *   copyright            : (C) 2018 Stefan Zehnpfennig & L. Gmann
  *  
@@ -29,7 +29,7 @@
  * 
  * @author      Stefan Zehnpfennig & L. Gmann
  * @copyright   Copyright (c) 2018, Stefan Zehnpfennig & L. Gmann
- * @version     1.1.0.0
+ * @version     1.1.0.1
  * @package     ts3admin
  *
  */
@@ -4807,7 +4807,7 @@ class ts3admin {
   * 
   * Executes a command and fetches the response
   *
-  * @author     Stefan Zehnpfennig & L. Gmann
+  * @author     Stefan Zehnpfennig & L. Gmann & MINORITYmaN
   * @param		string	$command	command which should be executed
   * @param		array	$tracert	array with information from first exec
   * @return     mixed data
@@ -4833,19 +4833,22 @@ class ts3admin {
 			}
 		}
 		do {
-			$data .= @fgets($stream, 4096);
-			if(empty($data))
-			{
-				$this->runtime['socket'] = $this->config['bot_clid'] = '';
+			if(is_resource( $stream ) === false || @feof( $stream ) === true){
+				if(is_resource( $stream ) === true){
+					@fclose($stream);
+				}
+				$this->runtime['socket'] = $this->runtime['bot_clid'] = '';
 				$this->addDebugLog('Socket closed.', $tracert[1]['function'], $tracert[0]['line']);
 				return $this->generateOutput(false, array('Socket closed.'), false);
 			}
-			else if(strpos($data, 'error id=3329 msg=connection') !== false) {
-				$this->runtime['socket'] = $this->config['bot_clid'] = '';
+			
+			$data .= @fgets($stream, 4096);
+			
+			if(strpos($data, 'error id=3329 msg=connection') !== false) {
+				$this->runtime['socket'] = $this->runtime['bot_clid'] = '';
 				$this->addDebugLog('You got banned from server. Socket closed.', $tracert[1]['function'], $tracert[0]['line']);
 				return $this->generateOutput(false, array('You got banned from server. Connection closed.'), false);
 			}
-			
 		} while(strpos($data, 'msg=') === false or strpos($data, 'error id=') === false);
 
 		if(strpos($data, 'error id=0 msg=ok') === false) {
@@ -4882,7 +4885,7 @@ class ts3admin {
   *		[targetmode] => 3
   * }
   * </pre>
-  * @author	toxiicdev 
+  * @author	toxiicdev & MINORITYmaN
   * @param	string	$type		textserver|textchannel|textprivate
   * @param	boolean	$keepalive	default false
   * @param	int		$cid		channel id (required only for textchannel)
@@ -4890,12 +4893,14 @@ class ts3admin {
   */	
 	public function readChatMessage($type = 'textchannel', $keepalive = false, $cid = -1)
 	{
+		$tracert = debug_backtrace();
 		$availTypes = array('textserver', 'textchannel', 'textprivate');
 		$rtnData = array('success' => 0, 'data' => array('invokerid' => '', 'invokeruid' => '', 'invokername' => '', 'msg' => '', 'targetmode' => ''));
 		
 		if(!$this->isConnected()) {
+			$this->runtime['socket'] = $this->runtime['bot_clid'] = '';
 			$this->addDebugLog('script isn\'t connected to server', $tracert[1]['function'], $tracert[0]['line']);
-			return $rtnData;
+			return $this->generateOutput(false, array('script isn\'t connected to server'), false);
 		}
 		
 		if(!in_array($type, $availTypes)) {
@@ -4903,7 +4908,7 @@ class ts3admin {
 			return $rtnData;
 		}
 		
-		if(!$this->config['selected']) { return $this->checkSelected(); }
+		if(!$this->runtime['selected']) { return $this->checkSelected(); }
 		
 		$whoami = $this->whoami();
 		
@@ -4951,7 +4956,7 @@ class ts3admin {
  * 
  * Parses data from query and returns an array
  * 
- * @author		Stefan Zehnpfennig
+ * @author		Stefan Zehnpfennig & MINORITYmaN
  * @access		private
  * @param		string	$mode		select return mode ('boolean', 'array', 'multi', 'plain')
  * @param		string	$command	command which should be executed
@@ -4982,61 +4987,31 @@ class ts3admin {
 				return $this->generateOutput(true, array(), true);
 			}
 			
-			if($mode == 'array') {
-				if(empty($fetchData['data'])) { return $this->generateOutput(true, array(), array()); }
-				$datasets = explode(' ', $fetchData['data']);
-				
-				$output = array();
-				
-				foreach($datasets as $dataset) {
-					$dataset = explode('=', $dataset);
-					
-					if(count($dataset) > 2) {
-						for($i = 2; $i < count($dataset); $i++) {
-							$dataset[1] .= '='.$dataset[$i];
-						}
-						$output[$this->unEscapeText($dataset[0])] = $this->unEscapeText($dataset[1]);
-					}else{
-						if(count($dataset) == 1) {
-							$output[$this->unEscapeText($dataset[0])] = '';
-						}else{
-							$output[$this->unEscapeText($dataset[0])] = $this->unEscapeText($dataset[1]);
-						}
-						
-					}
-				}
-				return $this->generateOutput(true, array(), $output);
-			}
-			if($mode == 'multi') {
+			if($mode == 'array' || $mode == 'multi'){
 				if(empty($fetchData['data'])) { return $this->generateOutput(true, array(), array()); }
 				$datasets = explode('|', $fetchData['data']);
-				
+
 				$output = array();
-				
+
 				foreach($datasets as $datablock) {
 					$datablock = explode(' ', $datablock);
-					
+
 					$tmpArray = array();
-					
+
 					foreach($datablock as $dataset) {
-						$dataset = explode('=', $dataset);
-						if(count($dataset) > 2) {
-							for($i = 2; $i < count($dataset); $i++) {
-								$dataset[1] .= '='.$dataset[$i];
-							}
-							$tmpArray[$this->unEscapeText($dataset[0])] = $this->unEscapeText($dataset[1]);
-						}else{
-							if(count($dataset) == 1) {
-								$tmpArray[$this->unEscapeText($dataset[0])] = '';
-							}else{
-								$tmpArray[$this->unEscapeText($dataset[0])] = $this->unEscapeText($dataset[1]);
-							}
-						}					
+						$dataset = explode('=', $dataset, 2);
+						$tmpArray[ $this->unEscapeText($dataset[ 0 ]) ] = isset( $dataset[ 1 ] ) ? $this->unEscapeText( $dataset[ 1 ] ) : '';				
 					}
+					
+					if($mode == 'array'){
+						return $this->generateOutput(true, array(), $tmpArray);
+					}
+
 					$output[] = $tmpArray;
 				}
 				return $this->generateOutput(true, array(), $output);
 			}
+			
 			if($mode == 'plain') {
 				return $fetchData;
 			}
@@ -5116,13 +5091,25 @@ class ts3admin {
  	public function getDebugLog() {
 		return $this->config['debug'];
 	}
+	
+/**
+  * clearDebugLog
+  * 
+  * Clears the debug log
+  *
+  * @author     MINORITYmaN
+  * @return     empty array debugLog
+  */
+ 	public function clearDebugLog() {
+		return $this->runtime['debug'] = [];
+	}
 
 /**
   * addDebugLog
   * 
   * Adds an entry to debugLog
   *
-  * @author     Stefan Zehnpfennig
+  * @author     Stefan Zehnpfennig & MINORITYmaN
   * @param		string	$text			text which should added to debugLog
   * @param		string	$methodName		name of the executed method [optional]
   * @param		string	$line			line where error triggered [optional]
@@ -5134,7 +5121,7 @@ class ts3admin {
 			$methodName = $backtrace[1]['function'];
 			$line = $backtrace[0]['line'];
 		}
-		$this->config['debug'][] = 'Error in '.$methodName.'() on line '.$line.': '.$text;	
+		$this->config['debug'][] = date('Y-m-d H:i:s').'Error in '.$methodName.'() on line '.$line.': '.$text;	
 	}
 }
 
