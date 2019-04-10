@@ -4908,7 +4908,7 @@ class ts3admin {
 			return $rtnData;
 		}
 		
-		if(!$this->runtime['selected']) { return $this->checkSelected(); }
+		if(!$this->config['selected']) { return $this->checkSelected(); }
 		
 		$whoami = $this->whoami();
 		
